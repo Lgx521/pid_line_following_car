@@ -24,8 +24,8 @@ PWM_IN_2 = 20
 
 # Motor2 所有控制
 PWM_OUT_2 = 10
-M3 = 11
-M4 = 12
+M3 = 12
+M4 = 11
 PWM_IN_3 = 19
 PWM_IN_4 = 18
 
@@ -68,7 +68,7 @@ gyro_pid = PID(5,5,2,0)
 key = Pin(EXT_IRT_START, Pin.IN, Pin.PULL_UP)
 def external_interrupt(key):
     # 消除抖动
-    utime.sleep_ms(100)
+    utime.sleep_ms(150)
     # 再次判断按键是否被按下
     if key.value() == 0:
         print('The button is pressed')
@@ -141,14 +141,14 @@ def motor_run(rpm1, rpm2):
 # 电机转弯
 def wheeling(direction, percent):
     global freq_1, freq_2
-    bias = 50  # 调参
+    bias = 1000  # 调参
     val = bias * percent
     if direction == RIGHT:
-        freq_1 = min(920, freq_1 + val/2)
-        freq_2 = max(0, freq_2 - val/2)
+        target_1 = min(920, target_1 + val/2)
+        target_2 = max(0, target_2 - val/2)
     else:
-        freq_1 = max(0, freq_1 - val/2)
-        freq_2 = min(920, freq_2 + val/2)
+        target_1 = max(0, target_1 - val/2)
+        target_2 = min(920, target_2 + val/2)
         
 
 
@@ -181,3 +181,17 @@ def end_process():
     counter1.end_count()
     counter2.end_count()
     Pin(STATUS_LED,Pin.OUT).value(0)
+    
+    
+if __name__ == '__main__':
+    
+    initialization()
+    
+    motor_run(150,150)
+    utime.sleep(10)
+    
+    Pin(17,Pin.OUT).value(0)
+    wheeling(RIGHT,1)
+    utime.sleep(10)
+    
+    end_process()

@@ -48,10 +48,10 @@ def jy901_i2c_test():
         time.sleep_ms(200)
 
 
-if __name__ == "__main__":
-    jy901_dev = jy61p_i2c()
-    jy901_dev.init()
-    while True:
-        print(jy901_dev.read_ang())
-        time.sleep_ms(200)
+# if __name__ == "__main__":
+#     jy901_dev = jy61p_i2c()
+#     jy901_dev.init()
+#     while True:
+#         print(jy901_dev.read_ang())
+#         time.sleep_ms(200)
 
