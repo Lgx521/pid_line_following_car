@@ -140,8 +140,8 @@ def motor_run(rpm1, rpm2):
 
 # 电机转弯
 def wheeling(direction, percent):
-    global freq_1, freq_2
-    bias = 1000  # 调参
+    global target_1, target_2
+    bias = 300  # 调参
     val = bias * percent
     if direction == RIGHT:
         target_1 = min(920, target_1 + val/2)
@@ -150,7 +150,6 @@ def wheeling(direction, percent):
         target_1 = max(0, target_1 - val/2)
         target_2 = min(920, target_2 + val/2)
         
-
 
 dir_now = 0
 dir_target = 0
