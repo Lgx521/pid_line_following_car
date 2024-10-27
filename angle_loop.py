@@ -144,7 +144,6 @@ def wheeling(direction, percent):
     bias = 50  # 调参
     val = bias * percent
     if direction == RIGHT:
-        # turn left
         freq_1 = min(920, freq_1 + val/2)
         freq_2 = max(0, freq_2 - val/2)
     else:
