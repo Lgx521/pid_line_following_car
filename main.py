@@ -63,7 +63,8 @@ target_2 = 0
 
 # 角度传感器对象以及其pid对象
 gyro = jy61p_i2c()
-gyro_pid = PID(5,5,2,0)
+# gyro_pid = PID(3,0,25,0)
+gyro_pid = PID(3,0,25,0)
 
 key = Pin(EXT_IRT_START, Pin.IN, Pin.PULL_UP)
 def external_interrupt(key):
@@ -79,7 +80,7 @@ def external_interrupt(key):
 
 ## 电机控制回调函数
 def duty_set(timer):
-    global freq_1, freq_2
+    global freq_1, freq_2, target_1, target_2
 
     # 计算返回的频率
     freq_1 = counter1.freq
@@ -108,7 +109,9 @@ def duty_set(timer):
         duty_2 = m2.pid.compute(freq_2)
         m2.backward(duty_2)
         
-    print('m1 freq=%.2f rpm=%.2f; m2 freq=%.2f rpm=%.2f' % (freq_1,freq_to_rpm(freq_1), freq_2,freq_to_rpm(freq_2)) )
+    print('m1 freq=%.2f rpm=%.2f;  m2 freq=%.2f rpm=%.2f' % (freq_1,freq_to_rpm(freq_1), freq_2,freq_to_rpm(freq_2)) )
+    print('m1 target=%.2f, m2 target=%.2f'%(target_1, target_2))
+
 
 # 计算目标转速对应的频率
 def rpm_to_freq(rpm):
@@ -141,49 +144,93 @@ def motor_run(rpm1, rpm2):
     target_2 = rpm_to_freq(rpm2)
 
 # 电机转弯
-def wheeling(direction, percent):
+def wheeling(percent):
     global target_1, target_2
-    bias = 1  # 调参
+    bias = 1.2  # 调参 1.0 正常转弯，超调较小
     val = bias * percent
-    if direction > 0:
-        target_1 = target_1 + val/2
-        target_2 = target_2 - val/2
-    elif direction < 0:
-        target_1 = target_1 - val/2
-        target_2 =  target_2 + val/2
+    target_1 = target_1 + val/2
+    target_2 = target_2 - val/2
+    
+
+def angle_difference(angle1, angle2):
+
+    # 确保角度在 0～360 范围内
+    angle1 = angle1 % 360
+    angle2 = angle2 % 360
+
+    # 计算直接差值
+    diff = angle2 - angle1
+
+    # 确保差值在 -180 到 180 范围
+    if diff > 180:
+        diff -= 360
+    elif diff < -180:
+        diff += 360
+
+    return diff
         
 
-dir_now = 0
+gyro_status = 0
 dir_target = 0
-
 dir_inprogress=0
 
 def gyro_callback(t):
     global dir_target, dir_inprogress
+    
     dir_inprogress=float(gyro.read_ang()[2])
-    control = gyro_pid.compute(dir_inprogress)
-    if control > 100:
-        control=100
-    elif control < -100:
-        control = -100
-    print('control=%d, tar=%.2f, dirnow=%.2f'%(control, dir_target, dir_inprogress))
+    
+    error=angle_difference(dir_target,dir_inprogress)
+    
+    if abs(error) < 1:
+        print('control=OFF, tar=%.2f, dirnow=%.2f'%(dir_target, dir_inprogress))
+        global target_1, target_2
+        mean = (target_1 + target_2) / 2
+        target_1 = mean
+        target_2 = mean
+        return
+    
+    control = gyro_pid.compute_2(error) / 40
+    
+    if control > 30:
+        control=30
+    elif control < -30:
+        control = -30
+    print('control=%.2f, tar=%.2f, dirnow=%.2f'%(control, dir_target, dir_inprogress))
     # 操作进行转弯
     if control!=0:
-        wheeling(abs(control)/control, abs(control))
+        wheeling(control)
         
 gyro_timer = Timer()
 
 
 # 陀螺仪转弯(particular angle)
 def proceed_gyro(angle):
-    global dir_now, dir_target
-    dir_now = float(gyro.read_ang()[2])  #返回row轴角度
+    '''
+    angle 为一个增量，范围为-180～180，负号表示右转，正号左转
+    '''
+    global gyro_status, dir_target
+    
+    
+    # 设定目标方向
+    dir_now = float(gyro.read_ang()[2])
+    
     dir_target = dir_now + angle
+    if dir_target > 180:
+        dir_target -= 360
+    elif dir_target < -180:
+        dir_target += 360
+        
     # pid设置目标
     gyro_pid.set_target(dir_target)
     # 开始计时
-    gyro_timer.init(mode=Timer.PERIODIC, period=50, callback=gyro_callback)
+    if gyro_status == 0:
+        gyro_timer.init(mode=Timer.PERIODIC, period=50, callback=gyro_callback)
+
+    gyro_status = 1 
+
     
+
+
 
 
 # 进程终止函数
@@ -203,15 +250,19 @@ if __name__ == '__main__':
     
     initialization()
     
+    utime.sleep(1) # 等待接线
+    
     motor_run(150,150)
     
-    utime.sleep(1)
-  
     proceed_gyro(0)
     
-    Pin(17,Pin.OUT).value(0)
-    ###
-    utime.sleep(10)
+    utime.sleep(3)
     
+    proceed_gyro(-90)
+    
+    utime.sleep(8)
+    
+
+    Pin(17,Pin.OUT).value(0)   
     end_process()
 
