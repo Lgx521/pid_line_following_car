@@ -2,44 +2,9 @@ from motor_control import motor, PID, counter
 from machine import Pin, PWM, Timer, I2C
 import utime
 from jy61p import jy61p_i2c
+from constants import *
 
 
-## 常数
-LEFT = -1
-RIGHT = 1
-
-## 所有引脚定义
-# I2C输入
-OLED_SDA = 0
-OLED_SCL = 1
-GYRO_SDA = 2
-GYRO_SCL = 3
-
-# Motor1 所有控制
-PWM_OUT_1 = 6
-M1 = 7
-M2 = 8
-PWM_IN_1 = 21
-PWM_IN_2 = 20
-
-# Motor2 所有控制
-PWM_OUT_2 = 10
-M3 = 12
-M4 = 11
-PWM_IN_3 = 19
-PWM_IN_4 = 18
-
-# 外部中断
-EXT_IRT_START = 16
-EXT_IRT_INIT = 22
-
-# 程序状态指示
-STATUS_LED = 17
-
-# 红外模块模拟输入
-ANALOG_1 = 26
-ANALOG_2 = 27
-ANALOG_3 = 28
 
 ## 全局变量
 # 电机编码器返回频率计算值
@@ -62,7 +27,7 @@ target_1 = 0
 target_2 = 0
 
 # 角度传感器对象以及其pid对象
-gyro = jy61p_i2c()
+gyro = jy61p_i2c(I2C(1, scl=Pin(3), sda=Pin(2)))
 gyro_pid = PID(5,5,2,0)
 
 key = Pin(EXT_IRT_START, Pin.IN, Pin.PULL_UP)
@@ -121,8 +86,6 @@ def freq_to_rpm(freq):
 def initialization():
     # 亮程序指示灯
     Pin(STATUS_LED, Pin.OUT).value(1)
-    
-    gyro.init()
 
     # 开始计算输入频率
     global start_time, timer_calc
@@ -141,49 +104,20 @@ def motor_run(rpm1, rpm2):
     target_2 = rpm_to_freq(rpm2)
 
 # 电机转弯
-def wheeling(direction, percent):
+def wheeling(percent):
+    """
+    -1 < percent < 1
+    -1: turn left;
+    +1: turn right.
+    """
     global target_1, target_2
-    bias = 1  # 调参
+    bias = 300  # 调参
     val = bias * percent
-    if direction > 0:
-        target_1 = target_1 + val/2
-        target_2 = target_2 - val/2
-    elif direction < 0:
-        target_1 = target_1 - val/2
-        target_2 =  target_2 + val/2
-        
+    # 这里没有考虑到全功率倒车的情况
+    # 最高反转频率设置到-400Hz，最高正向频率到920Hz
+    target_1 = max(-400, min(target_1 + val / 2, 920))
+    target_2 = max(-400, min(target_2 - val / 2, 920))
 
-dir_now = 0
-dir_target = 0
-
-dir_inprogress=0
-
-def gyro_callback(t):
-    global dir_target, dir_inprogress
-    dir_inprogress=float(gyro.read_ang()[2])
-    control = gyro_pid.compute(dir_inprogress)
-    if control > 100:
-        control=100
-    elif control < -100:
-        control = -100
-    print('control=%d, tar=%.2f, dirnow=%.2f'%(control, dir_target, dir_inprogress))
-    # 操作进行转弯
-    if control!=0:
-        wheeling(abs(control)/control, abs(control))
-        
-gyro_timer = Timer()
-
-
-# 陀螺仪转弯(particular angle)
-def proceed_gyro(angle):
-    global dir_now, dir_target
-    dir_now = float(gyro.read_ang()[2])  #返回row轴角度
-    dir_target = dir_now + angle
-    # pid设置目标
-    gyro_pid.set_target(dir_target)
-    # 开始计时
-    gyro_timer.init(mode=Timer.PERIODIC, period=50, callback=gyro_callback)
-    
 
 
 # 进程终止函数
@@ -193,7 +127,6 @@ def end_process():
     m1.stop()
     m2.stop()
     timer_dutyset.deinit()
-    gyro_timer.deinit()
     counter1.end_count()
     counter2.end_count()
     Pin(STATUS_LED,Pin.OUT).value(0)
@@ -204,14 +137,10 @@ if __name__ == '__main__':
     initialization()
     
     motor_run(150,150)
-    
-    utime.sleep(1)
-  
-    proceed_gyro(0)
+    utime.sleep(10)
     
     Pin(17,Pin.OUT).value(0)
-    ###
+    wheeling(RIGHT,1)
     utime.sleep(10)
     
     end_process()
-
